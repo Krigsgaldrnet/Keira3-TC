@@ -6,8 +6,13 @@ on:
     paths-ignore:
       - "**/*.md"
   pull_request:
-      paths-ignore:
-        - "**/*.md"
+    paths-ignore:
+      - "**/*.md"
+
+# A new push to a PR cancels its older runs. Pushes to master get a group of their own, so they never cancel or queue each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -15,28 +20,17 @@ jobs:
       fail-fast: false
       matrix:
         node-version: [22, 24]
-        os: [ubuntu-22.04, ubuntu-24.04]
+        # PRs run one version per OS, master runs them all (ubuntu-22.04 stays for the older glibc, see #3844)
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || '["ubuntu-22.04", "ubuntu-24.04"]') }}
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.os }}-node-${{ matrix.node-version }}
 
     steps:
       - uses: actions/checkout@v7
-      - name: Use Node.js
-        uses: actions/setup-node@v7
+      - name: Install dependencies
+        uses: ./.github/actions/install
         with:
           node-version: ${{ matrix.node-version }}
-      - name: Update npm
-        run: npm install -g npm@latest
-      - name: Cache Node.js modules
-        uses: actions/cache@v6
-        with:
-          # npm cache files are stored in `~/.npm` on Linux/macOS
-          path: ~/.npm
-          key: ${{ runner.OS }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.OS }}-node-
-            ${{ runner.OS }}-
-      - name: Install dependencies
-        run: npm ci --include=optional
+          update-npm: true
       - name: electron:linux:ci
         run: npm run electron:linux:ci
