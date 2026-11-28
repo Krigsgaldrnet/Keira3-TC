@@ -63,8 +63,9 @@ export class MoneyInputComponent implements OnInit {
       copper: toInteger(this.copper()),
     });
     this.lastEmitted = this.negative && amount !== 0 ? -amount : amount;
-    this.control().setValue(this.lastEmitted);
+    // Dirty first: multi-row editors skip form value changes while the form is still pristine.
     this.control().markAsDirty();
+    this.control().setValue(this.lastEmitted);
   }
 
   onBlur(): void {

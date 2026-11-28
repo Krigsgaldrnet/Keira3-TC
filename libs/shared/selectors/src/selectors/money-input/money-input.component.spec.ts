@@ -90,6 +90,16 @@ describe('MoneyInputComponent', () => {
     expect(page.boxes()).toEqual(['21', '59', '37']);
   });
 
+  it('should mark the control dirty before it emits the new value', () => {
+    const { host, page } = setup();
+    const dirtyOnEmit: boolean[] = [];
+    host.control.valueChanges.subscribe(() => dirtyOnEmit.push(host.control.dirty));
+
+    page.type('copper', '5');
+
+    expect(dirtyOnEmit).toEqual([true]);
+  });
+
   it('should drop non-digits as they are typed', () => {
     const { host, page } = setup(0);
 

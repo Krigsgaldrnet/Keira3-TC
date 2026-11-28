@@ -7,7 +7,7 @@ import { MysqlQueryService, SqliteQueryService, SqliteService } from '@keira/sha
 import { EditorPageObject, TranslateTestingModule } from '@keira/shared/test-utils';
 import { ModalDirective } from 'ngx-bootstrap/modal';
 import { ToastrModule } from 'ngx-toastr';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { instance, mock } from 'ts-mockito';
 import { GameTeleComponent } from './game-tele.component';
 import { GameTeleHandlerService } from '../game-tele-handler.service';
@@ -153,6 +153,7 @@ describe('GameTele integration tests', () => {
 
       page.setInputValueById('position_x', 1.234);
       page.expectDiffQueryToContain("UPDATE `game_tele` SET `position_x` = 1.234, `name` = 'ABCD' WHERE (`id` = 1);");
+      page.expectDiffQueryToUpdate('game_tele', { id: 1 }, { position_x: 1.234, name: 'ABCD' });
       page.expectFullQueryToContain(
         'DELETE FROM `game_tele` WHERE (`id` = 1);\n' +
           'INSERT INTO `game_tele` (`id`, `position_x`, `position_y`, `position_z`, `orientation`, `map`, `name`) VALUES\n' +
@@ -160,6 +161,37 @@ describe('GameTele integration tests', () => {
       );
 
       querySpy.mockClear();
+    });
+
+    it('schema sweep: every editable field flows into the diff query', async () => {
+      const { page } = setup(false);
+      const written = await page.changeAllFieldsAsync(originalEntity);
+
+      for (const field of Object.keys(written)) {
+        page.expectDiffQueryToContain('`' + field + '`');
+      }
+    });
+
+    it('shows an error toast when the save query fails', async () => {
+      const { page, querySpy } = setup(false);
+      page.setInputValueById('name', 'X');
+
+      querySpy.mockReturnValue(throwError(() => new Error('mock SQL failure')));
+      page.clickExecuteQuery();
+      await page.whenReady();
+
+      page.expectErrorToastVisible();
+    });
+
+    it('changing a value via MapSelector should correctly work', async () => {
+      const { page } = setup(false);
+      const sqliteQueryService = TestBed.inject(SqliteQueryService);
+      vi.spyOn(sqliteQueryService, 'query').mockReturnValue(of([{ m_ID: 530, m_MapName_lang1: 'Outland' }]));
+
+      const result = await page.openSelectorAndPickRow('map', 0, { clickSearch: true });
+
+      expect(result).toBe('530');
+      page.expectDiffQueryToContain('`map` = 530');
     });
   });
 });
