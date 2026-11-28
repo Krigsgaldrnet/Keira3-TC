@@ -8,6 +8,7 @@ import { TooltipDirective } from 'ngx-bootstrap/tooltip';
 import { of, throwError } from 'rxjs';
 import { instance, mock } from 'ts-mockito';
 
+import { ElectronService } from '@keira/shared/common-services';
 import { KeiraConnectionOptions, MysqlService } from '@keira/shared/db-layer';
 import { LoginConfigService } from '@keira/shared/login-config';
 import { ConnectionWindowComponent } from './connection-window.component';
@@ -51,6 +52,20 @@ class ConnectionWindowComponentPage extends PageObject<ConnectionWindowComponent
   }
   get recentConfigs(): HTMLUListElement[] {
     return this.queryAll<HTMLUListElement>('.config-item');
+  }
+  get sshEnabledInput(): HTMLInputElement {
+    return this.query<HTMLInputElement>('#ssh-enabled');
+  }
+  get sshPrivateKeyInput(): HTMLTextAreaElement {
+    return this.query<HTMLTextAreaElement>('#ssh-private-key');
+  }
+  get sshKeyFileInput(): HTMLInputElement {
+    return this.query<HTMLInputElement>('#ssh-key-file');
+  }
+
+  selectSshKeyFile(files: File[]): void {
+    Object.defineProperty(this.sshKeyFileInput, 'files', { value: files });
+    this.sshKeyFileInput.dispatchEvent(new Event('change'));
   }
 }
 
@@ -99,6 +114,7 @@ describe('ConnectionWindowComponent', () => {
         provideZonelessChangeDetection(),
         provideNoopAnimations(),
         { provide: MysqlService, useValue: instance(mock(MysqlService)) },
+        { provide: ElectronService, useValue: { isElectron: () => false, fs: { readFileSync: vi.fn() } } },
         {
           provide: LoginConfigService,
           useValue: {
@@ -378,6 +394,40 @@ describe('ConnectionWindowComponent', () => {
       await page.whenStable();
 
       expect(component.onConnect).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('the SSH private key file picker', () => {
+    function setupSshKey() {
+      const result = setup();
+      const readFileSyncSpy = vi.spyOn(TestBed.inject(ElectronService).fs, 'readFileSync');
+      result.page.clickElement(result.page.sshEnabledInput);
+      return { ...result, readFileSyncSpy };
+    }
+
+    it('should fill the private key with the content of the selected file', async () => {
+      const { page, component, readFileSyncSpy } = setupSshKey();
+      readFileSyncSpy.mockReturnValue('PRIVATE KEY CONTENT');
+      // Electron exposes the absolute path of the picked file on the File object
+      const keyFile = Object.assign(new File(['ignored'], 'id_rsa'), { path: '/home/shin/.ssh/id_rsa' });
+
+      page.selectSshKeyFile([keyFile]);
+      await page.whenStable();
+
+      expect(readFileSyncSpy).toHaveBeenCalledExactlyOnceWith('/home/shin/.ssh/id_rsa', 'utf8');
+      expect(component.form.controls.sshPrivateKey.value).toBe('PRIVATE KEY CONTENT');
+      expect(page.sshPrivateKeyInput.value).toBe('PRIVATE KEY CONTENT');
+    });
+
+    it('should keep the private key unchanged when no file is selected', async () => {
+      const { page, component, readFileSyncSpy } = setupSshKey();
+      page.setInputValue(page.sshPrivateKeyInput, 'EXISTING KEY');
+
+      page.selectSshKeyFile([]);
+      await page.whenStable();
+
+      expect(readFileSyncSpy).toHaveBeenCalledTimes(0);
+      expect(component.form.controls.sshPrivateKey.value).toBe('EXISTING KEY');
     });
   });
 

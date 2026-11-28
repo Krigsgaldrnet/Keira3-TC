@@ -180,5 +180,45 @@ describe('SAI Editor Service', () => {
       expect(getNameSpy).toHaveBeenCalledTimes(1);
       expect(generateCommentSpy).toHaveBeenCalledTimes(1);
     });
+
+    it('should not change the comment field when generating comments in all rows and no row is selected', async () => {
+      const { service, handlerService, saiCommentGeneratorService } = setup();
+      vi.spyOn<any>(handlerService, 'getName').mockImplementation(() => undefined);
+      const mockRows: Partial<SmartScripts>[] = [
+        { entryorguid: 0, source_type: 0, id: 0, link: 0, event_type: 0 },
+        { entryorguid: 0, source_type: 0, id: 1, link: 0, event_type: 0 },
+      ];
+      service['_newRows'] = mockRows as SmartScripts[];
+      service.form.controls.comment.setValue('previous comment');
+      vi.spyOn<any>(service, 'updateDiffQuery').mockImplementation(() => undefined);
+      vi.spyOn<any>(service, 'updateFullQuery').mockImplementation(() => undefined);
+      vi.spyOn(service, 'refreshDatatable').mockImplementation(() => undefined);
+      vi.spyOn(service, 'isRowSelected').mockReturnValue(false);
+      const generateCommentSpy = vi.spyOn(saiCommentGeneratorService, 'generateComment').mockResolvedValue('generated comment');
+
+      await service.generateComments(true);
+
+      expect(generateCommentSpy).toHaveBeenCalledTimes(2);
+      expect(service.newRows.map((row) => row.comment)).toEqual(['generated comment', 'generated comment']);
+      expect(service.form.controls.comment.value).toBe('previous comment');
+    });
+
+    it('should not generate any comment when generating only one comment and no row is selected', async () => {
+      const { service, handlerService, saiCommentGeneratorService } = setup();
+      vi.spyOn<any>(handlerService, 'getName').mockImplementation(() => undefined);
+      const mockRows: Partial<SmartScripts>[] = [{ entryorguid: 0, source_type: 0, id: 0, link: 0, event_type: 0, comment: 'old' }];
+      service['_newRows'] = mockRows as SmartScripts[];
+      const updateDiffQuerySpy = vi.spyOn<any>(service, 'updateDiffQuery').mockImplementation(() => undefined);
+      vi.spyOn<any>(service, 'updateFullQuery').mockImplementation(() => undefined);
+      vi.spyOn(service, 'refreshDatatable').mockImplementation(() => undefined);
+      vi.spyOn(service, 'isRowSelected').mockReturnValue(false);
+      const generateCommentSpy = vi.spyOn(saiCommentGeneratorService, 'generateComment');
+
+      await service.generateComments();
+
+      expect(generateCommentSpy).toHaveBeenCalledTimes(0);
+      expect(service.newRows[0].comment).toBe('old');
+      expect(updateDiffQuerySpy).toHaveBeenCalledTimes(1);
+    });
   });
 });

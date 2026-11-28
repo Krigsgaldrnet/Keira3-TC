@@ -189,6 +189,68 @@ describe('MysqlQueryService', () => {
     );
   });
 
+  describe('getCreaturePosition()', () => {
+    it('should return the first spawn of the given guid', async () => {
+      const { service } = setup();
+      const data = [{ mapId: 0, x: 1, y: 2, orientation: 3 }];
+      const querySpy = vi.spyOn(service, 'query').mockReturnValue(of(data));
+
+      expect(await service.getCreaturePosition(123)).toEqual(data[0]);
+      expect(querySpy).toHaveBeenCalledExactlyOnceWith(
+        'SELECT map AS mapId, position_x AS x, position_y AS y, orientation FROM creature WHERE guid = 123',
+      );
+    });
+
+    it('should return null when the guid has no spawn', async () => {
+      const { service } = setup();
+      vi.spyOn(service, 'query').mockReturnValue(of([]));
+
+      expect(await service.getCreaturePosition(123)).toBeNull();
+    });
+  });
+
+  it('getCreaturePositionByEntry() should query the first spawn of the given entry', async () => {
+    const { service } = setup();
+    const data = [{ mapId: 0, x: 1, y: 2, orientation: 3, guid: 5 }];
+    const querySpy = vi.spyOn(service, 'query').mockReturnValue(of(data));
+
+    expect(await service.getCreaturePositionByEntry(123)).toEqual(data);
+    expect(querySpy).toHaveBeenCalledExactlyOnceWith(
+      'SELECT map AS mapId, position_x AS x, position_y AS y, orientation, guid FROM creature WHERE id = 123 LIMIT 1',
+    );
+  });
+
+  describe('getGameObjectPosition()', () => {
+    it('should return the first spawn of the given guid', async () => {
+      const { service } = setup();
+      const data = [{ mapId: 0, x: 1, y: 2, orientation: 3 }];
+      const querySpy = vi.spyOn(service, 'query').mockReturnValue(of(data));
+
+      expect(await service.getGameObjectPosition(123)).toEqual(data[0]);
+      expect(querySpy).toHaveBeenCalledExactlyOnceWith(
+        'SELECT map AS mapId, position_x AS x, position_y AS y, rotation0 AS orientation FROM gameobject WHERE guid = 123',
+      );
+    });
+
+    it('should return null when the guid has no spawn', async () => {
+      const { service } = setup();
+      vi.spyOn(service, 'query').mockReturnValue(of([]));
+
+      expect(await service.getGameObjectPosition(123)).toBeNull();
+    });
+  });
+
+  it('getGameObjectPositionByEntry() should query the first spawn of the given entry', async () => {
+    const { service } = setup();
+    const data = [{ mapId: 0, x: 1, y: 2, orientation: 3, guid: 5 }];
+    const querySpy = vi.spyOn(service, 'query').mockReturnValue(of(data));
+
+    expect(await service.getGameObjectPositionByEntry(123)).toEqual(data);
+    expect(querySpy).toHaveBeenCalledExactlyOnceWith(
+      'SELECT map AS mapId, position_x AS x, position_y AS y, rotation0 AS orientation, guid FROM gameobject WHERE id = 123 LIMIT 1',
+    );
+  });
+
   it('getCreaturesDroppingItem() should correctly work', () => {
     const { service } = setup();
     const data = [{ entry: 456 }];

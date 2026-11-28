@@ -8,6 +8,7 @@ import { QuestOfferReward, QuestRequestItems, QuestTemplate, QuestTemplateAddon 
 import { KEIRA_APP_CONFIG_TOKEN, KEIRA_MOCK_CONFIG } from '@keira/shared/config';
 import { Class } from '@keira/shared/constants';
 import { MysqlQueryService, SqliteQueryService } from '@keira/shared/db-layer';
+import { MapPoint, MapViewerService } from '@keira/shared/map-viewer';
 import { Model3DViewerService } from '@keira/shared/model-3d-viewer';
 import { PageObject, TranslateTestingModule } from '@keira/shared/test-utils';
 import { ToastrModule } from 'ngx-toastr';
@@ -713,6 +714,61 @@ describe('QuestPreviewComponent', () => {
       expect(page.rewardChoiceItems.innerText).toContain('You will be able to choose one of these rewards');
       expect(page.rewardChoiceItems.innerText).toContain('Mock Item');
 
+      page.removeNativeElement();
+    });
+  });
+
+  describe('objective location maps', () => {
+    const point: MapPoint = { mapId: 1, x: 10, y: 20, orientation: 0, name: 'Mock NPC', icon: 'map/pin-yellow.png' };
+    const noMapData = { startEnd: [], objectives: [], items: [] };
+    const npcObjectiveMapData = { startEnd: [], objectives: [{ index: 1, points: [point] }], items: [] };
+
+    function setupObjectives() {
+      const result = setup();
+      const { service, mysqlQueryService } = result;
+      const questTemplate = createMockObject({ RequiredNpcOrGo1: 100, RequiredNpcOrGo2: -200 }, QuestTemplate);
+      vi.spyOn(service, 'questTemplate', 'get').mockReturnValue(questTemplate);
+      // the query service caches these promises, and the template's async pipes rely on getting the same instance back
+      vi.spyOn(mysqlQueryService, 'getCreatureNameById').mockReturnValue(Promise.resolve('Mock NPC'));
+      vi.spyOn(mysqlQueryService, 'getGameObjectNameById').mockReturnValue(Promise.resolve('Mock GO'));
+      // never resolved, so no 3D model viewer is rendered
+      vi.spyOn(mysqlQueryService, 'getCreatureDisplayIdById').mockReturnValue(new Promise(() => undefined));
+      vi.spyOn(mysqlQueryService, 'getGameobjectDisplayIdById').mockReturnValue(new Promise(() => undefined));
+      const mapViewerService = TestBed.inject(MapViewerService);
+      vi.spyOn(mapViewerService, 'getAreasByMapId').mockResolvedValue(new Map());
+      vi.spyOn(mapViewerService, 'getOverlaysByArea').mockResolvedValue(new Map());
+      const getMapDataSpy = vi.spyOn(service, 'getMapData');
+      const objectiveSection = (label: string): HTMLDivElement =>
+        Array.from(result.page.queryAll<HTMLDivElement>('.location-section')).find((section) =>
+          section.textContent?.includes(label),
+        ) as HTMLDivElement;
+      return { ...result, getMapDataSpy, objectiveSection };
+    }
+
+    it('should show a location map only for the objectives that have spawns', async () => {
+      const { page, getMapDataSpy, objectiveSection } = setupObjectives();
+      getMapDataSpy.mockResolvedValue(npcObjectiveMapData);
+
+      await page.whenStable();
+
+      expect(objectiveSection('Req. NPC 1').querySelector('keira-map-viewer')).not.toBeNull();
+      expect(objectiveSection('Req. GO 2').querySelector('keira-map-viewer')).toBeNull();
+      page.removeNativeElement();
+    });
+
+    it('should ignore the map data of a load superseded by a newer one', async () => {
+      const { page, getMapDataSpy, objectiveSection, valueChangesSubject } = setupObjectives();
+      let resolveFirstLoad!: (data: typeof noMapData) => void;
+      getMapDataSpy.mockReturnValueOnce(new Promise((resolve) => (resolveFirstLoad = resolve))).mockResolvedValueOnce(npcObjectiveMapData);
+
+      await page.whenStable();
+      valueChangesSubject.next();
+      await page.whenStable();
+      resolveFirstLoad(noMapData);
+      await page.whenStable();
+
+      expect(getMapDataSpy).toHaveBeenCalledTimes(2);
+      expect(objectiveSection('Req. NPC 1').querySelector('keira-map-viewer')).not.toBeNull();
       page.removeNativeElement();
     });
   });

@@ -105,6 +105,42 @@ describe(LoginConfigService.name, () => {
     });
   });
 
+  describe('SSH configs', () => {
+    const sshConfig = {
+      host: '127.0.0.1',
+      port: 3306,
+      user: 'root',
+      password: 'root',
+      database: 'acore_world',
+      sshEnabled: true,
+      sshHost: 'ssh.azerothcore.org',
+      sshPort: 22,
+      sshUser: 'shin',
+      sshPassword: 'sshSecret',
+    };
+
+    it('saveNewConfig() should encode the SSH password', () => {
+      const { service, localStorageService } = setup();
+      localStorageService.getItem.mockReturnValue(null);
+
+      service.saveNewConfig({ ...sshConfig });
+
+      expect(localStorageService.setItem).toHaveBeenCalledExactlyOnceWith(
+        service.KEY,
+        JSON.stringify([{ ...sshConfig, password: btoa(sshConfig.password), sshPassword: btoa(sshConfig.sshPassword) }]),
+      );
+    });
+
+    it('getConfigs() should decode the SSH password', () => {
+      const { service, localStorageService } = setup();
+      localStorageService.getItem.mockReturnValue(
+        JSON.stringify([{ ...sshConfig, password: btoa(sshConfig.password), sshPassword: btoa(sshConfig.sshPassword) }]),
+      );
+
+      expect(service.getConfigs()).toEqual([sshConfig]);
+    });
+  });
+
   describe('getConfigs()', () => {
     it('should correctly return the current config', () => {
       const { service, localStorageService } = setup();

@@ -141,6 +141,22 @@ describe('SingleRowEditorService', () => {
       expect(updateFullQuerySpy).toHaveBeenCalledTimes(1);
     });
 
+    it('should mark the handler as not new without changing the selected name when the main entity has no name field', () => {
+      const { service, updateFullQuerySpy } = setupReload();
+      const handlerService = TestBed.inject(MockHandlerService);
+      const entity: MockEntity = { id, guid: 12345, name: 'myName' };
+      handlerService.isNew = true;
+      handlerService.selectedName = 'previousName';
+      service['_entityNameField'] = undefined;
+
+      service['onReloadSuccessful']([entity], id);
+
+      expect(handlerService.isNew).toBe(false);
+      expect(handlerService.selectedName).toBe('previousName');
+      expect(service.form.getRawValue()).toEqual(entity);
+      expect(updateFullQuerySpy).toHaveBeenCalledTimes(1);
+    });
+
     it('should correctly work when loading an existing entity [as non-main entity]', () => {
       const { service, updateFullQuerySpy } = setupReload();
       const handlerService = TestBed.inject(MockHandlerService);

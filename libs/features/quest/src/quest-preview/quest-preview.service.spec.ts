@@ -3,6 +3,12 @@ import { vi, type MockInstance } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import {
+  CREATURE_QUESTENDER_TABLE,
+  CREATURE_QUESTSTARTER_TABLE,
+  GAMEOBJECT_QUESTENDER_TABLE,
+  GAMEOBJECT_QUESTSTARTER_TABLE,
+} from '@keira/shared/acore-world-model';
 import { KEIRA_APP_CONFIG_TOKEN, KEIRA_MOCK_CONFIG } from '@keira/shared/config';
 import {
   QUEST_FLAG_DAILY,
@@ -749,6 +755,152 @@ describe('QuestPreviewService', () => {
 
       questTemplateService.form.controls.Flags.setValue(UNAVAILABLE - 2);
       expect(service.isUnavailable()).toBe(false);
+    });
+  });
+
+  describe('getMapData()', () => {
+    const spawn = { mapId: 1, x: 10, y: 20, orientation: 0.5, guid: 99 };
+    const toPoint = (name: string, icon: string) => ({ mapId: 1, x: 10, y: 20, orientation: 0.5, name, icon });
+
+    const setupMapData = () => {
+      const result = setup();
+      const { mysqlQueryService, questTemplateService } = result;
+      questTemplateService.form.controls.ID.setValue(123);
+      const relations: Record<string, { id: number }[]> = {
+        [CREATURE_QUESTSTARTER_TABLE]: [{ id: 1 }],
+        [CREATURE_QUESTENDER_TABLE]: [{ id: 2 }],
+        [GAMEOBJECT_QUESTSTARTER_TABLE]: [{ id: 3 }],
+        [GAMEOBJECT_QUESTENDER_TABLE]: [{ id: 4 }],
+      };
+      const getQuestRelationEntriesSpy = vi
+        .spyOn(mysqlQueryService, 'getQuestRelationEntries')
+        .mockImplementation((table: string) => Promise.resolve(relations[table]));
+      const getCreaturePositionByEntrySpy = vi.spyOn(mysqlQueryService, 'getCreaturePositionByEntry').mockResolvedValue([]);
+      const getGameObjectPositionByEntrySpy = vi.spyOn(mysqlQueryService, 'getGameObjectPositionByEntry').mockResolvedValue([]);
+      const getCreatureSpawnsByEntrySpy = vi.spyOn(mysqlQueryService, 'getCreatureSpawnsByEntry').mockResolvedValue([]);
+      const getGameObjectSpawnsByEntrySpy = vi.spyOn(mysqlQueryService, 'getGameObjectSpawnsByEntry').mockResolvedValue([]);
+      const getCreaturesDroppingItemSpy = vi.spyOn(mysqlQueryService, 'getCreaturesDroppingItem').mockResolvedValue([]);
+      const getGameObjectsDroppingItemSpy = vi.spyOn(mysqlQueryService, 'getGameObjectsDroppingItem').mockResolvedValue([]);
+      return {
+        ...result,
+        getQuestRelationEntriesSpy,
+        getCreaturePositionByEntrySpy,
+        getGameObjectPositionByEntrySpy,
+        getCreatureSpawnsByEntrySpy,
+        getGameObjectSpawnsByEntrySpy,
+        getCreaturesDroppingItemSpy,
+        getGameObjectsDroppingItemSpy,
+      };
+    };
+
+    it('should return no points when there is no quest id', async () => {
+      const { service, questTemplateService } = setup();
+      questTemplateService.form.controls.ID.setValue(0);
+
+      expect(await service.getMapData()).toEqual({ startEnd: [], objectives: [], items: [] });
+    });
+
+    it('should return the starters before the enders, skipping the ones without a spawn', async () => {
+      const { service, getCreaturePositionByEntrySpy, getGameObjectPositionByEntrySpy } = setupMapData();
+      getCreaturePositionByEntrySpy.mockResolvedValue([spawn]);
+      getGameObjectPositionByEntrySpy.mockImplementation((entry) => Promise.resolve(entry === 4 ? [spawn] : []));
+
+      const { startEnd } = await service.getMapData();
+
+      expect(startEnd).toEqual([
+        toPoint('Helias Creature', 'quest/quest_start.gif'),
+        toPoint('Helias Creature', 'quest/quest_end.gif'),
+        toPoint('Helias Gameobject', 'quest/quest_end.gif'),
+      ]);
+    });
+
+    it('should keep the other points when one source fails to load', async () => {
+      const { service, getQuestRelationEntriesSpy, getCreaturePositionByEntrySpy } = setupMapData();
+      const loadError = new Error('missing table');
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      getQuestRelationEntriesSpy.mockImplementation((table: string) =>
+        table === CREATURE_QUESTSTARTER_TABLE ? Promise.reject(loadError) : Promise.resolve([{ id: 2 }]),
+      );
+      getCreaturePositionByEntrySpy.mockResolvedValue([spawn]);
+
+      const { startEnd } = await service.getMapData();
+
+      expect(startEnd).toEqual([toPoint('Helias Creature', 'quest/quest_end.gif')]);
+      expect(warnSpy).toHaveBeenCalledExactlyOnceWith('[QuestPreview] failed to load some map data:', loadError);
+    });
+
+    it('should return one entry per NPC or GO objective, named by the objective text when set', async () => {
+      const { service, questTemplateService, getCreatureSpawnsByEntrySpy, getGameObjectSpawnsByEntrySpy } = setupMapData();
+      questTemplateService.form.controls.RequiredNpcOrGo1.setValue(100);
+      questTemplateService.form.controls.ObjectiveText1.setValue('Slay the boar');
+      questTemplateService.form.controls.RequiredNpcOrGo2.setValue(-200);
+      questTemplateService.form.controls.RequiredNpcOrGo3.setValue(300);
+      getCreatureSpawnsByEntrySpy.mockResolvedValue([spawn]);
+      getGameObjectSpawnsByEntrySpy.mockResolvedValue([spawn]);
+
+      const { objectives } = await service.getMapData();
+
+      expect(objectives).toEqual([
+        { index: 1, points: [toPoint('Slay the boar', 'map/pin-yellow.png')] },
+        { index: 2, points: [toPoint('Helias Gameobject', 'map/pin-yellow.png')] },
+        { index: 3, points: [toPoint('Helias Creature', 'map/pin-yellow.png')] },
+      ]);
+      expect(getGameObjectSpawnsByEntrySpy).toHaveBeenCalledExactlyOnceWith(200);
+    });
+
+    it('should skip the NPC and GO objectives that have no spawns', async () => {
+      const { service, questTemplateService, getCreatureSpawnsByEntrySpy, getGameObjectSpawnsByEntrySpy } = setupMapData();
+      questTemplateService.form.controls.RequiredNpcOrGo1.setValue(100);
+      questTemplateService.form.controls.RequiredNpcOrGo2.setValue(-200);
+
+      const { objectives } = await service.getMapData();
+
+      expect(objectives).toEqual([]);
+      expect(getCreatureSpawnsByEntrySpy).toHaveBeenCalledExactlyOnceWith(100);
+      expect(getGameObjectSpawnsByEntrySpy).toHaveBeenCalledExactlyOnceWith(200);
+    });
+
+    it('should map the spawns of the only creature or gameobject dropping each required item', async () => {
+      const {
+        service,
+        questTemplateService,
+        getCreaturesDroppingItemSpy,
+        getGameObjectsDroppingItemSpy,
+        getCreatureSpawnsByEntrySpy,
+        getGameObjectSpawnsByEntrySpy,
+      } = setupMapData();
+      questTemplateService.form.controls.RequiredItemId1.setValue(1001);
+      questTemplateService.form.controls.RequiredItemId3.setValue(1003);
+      questTemplateService.form.controls.RequiredItemId5.setValue(1005);
+      getCreaturesDroppingItemSpy.mockImplementation((itemId) =>
+        Promise.resolve(itemId === 1001 ? [{ entry: 11 }] : itemId === 1005 ? [{ entry: 51 }] : []),
+      );
+      getGameObjectsDroppingItemSpy.mockImplementation((itemId) =>
+        Promise.resolve(itemId === 1003 ? [{ entry: 33 }] : itemId === 1005 ? [{ entry: 52 }] : []),
+      );
+      getCreatureSpawnsByEntrySpy.mockResolvedValue([spawn]);
+      getGameObjectSpawnsByEntrySpy.mockResolvedValue([spawn]);
+
+      const { items } = await service.getMapData();
+
+      expect(items).toEqual([
+        {
+          index: 1,
+          itemId: 1001,
+          dropperId: 11,
+          dropperName: 'Helias Creature',
+          isGameobject: false,
+          points: [toPoint('Helias Creature', 'map/pin-yellow.png')],
+        },
+        {
+          index: 3,
+          itemId: 1003,
+          dropperId: 33,
+          dropperName: 'Helias Gameobject',
+          isGameobject: true,
+          points: [toPoint('Helias Gameobject', 'map/pin-yellow.png')],
+        },
+      ]);
     });
   });
 });

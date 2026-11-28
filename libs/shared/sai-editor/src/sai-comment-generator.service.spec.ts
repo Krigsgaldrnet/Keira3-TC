@@ -1710,6 +1710,86 @@ describe('SaiCommentGeneratorService', () => {
         expected: `MockEntity - In Combat - Mount To Model 1`,
       },
       {
+        name: `SAI_ACTIONS.SET_INST_DATA check boss state 0 (NOT_STARTED)`,
+        input: {
+          action_type: SAI_ACTIONS.SET_INST_DATA,
+          action_param1: 5,
+          action_param2: 0,
+          action_param3: 1,
+        },
+        expected: `MockEntity - In Combat - SetBossState 5 to NOT_STARTED`,
+      },
+      {
+        name: `SAI_ACTIONS.SET_INST_DATA check boss state 1 (IN_PROGRESS)`,
+        input: {
+          action_type: SAI_ACTIONS.SET_INST_DATA,
+          action_param1: 5,
+          action_param2: 1,
+          action_param3: 1,
+        },
+        expected: `MockEntity - In Combat - SetBossState 5 to IN_PROGRESS`,
+      },
+      {
+        name: `SAI_ACTIONS.SET_INST_DATA check boss state 2 (FAIL)`,
+        input: {
+          action_type: SAI_ACTIONS.SET_INST_DATA,
+          action_param1: 5,
+          action_param2: 2,
+          action_param3: 1,
+        },
+        expected: `MockEntity - In Combat - SetBossState 5 to FAIL`,
+      },
+      {
+        name: `SAI_ACTIONS.SET_INST_DATA check boss state 3 (DONE)`,
+        input: {
+          action_type: SAI_ACTIONS.SET_INST_DATA,
+          action_param1: 5,
+          action_param2: 3,
+          action_param3: 1,
+        },
+        expected: `MockEntity - In Combat - SetBossState 5 to DONE`,
+      },
+      {
+        name: `SAI_ACTIONS.SET_INST_DATA check boss state 4 (SPECIAL)`,
+        input: {
+          action_type: SAI_ACTIONS.SET_INST_DATA,
+          action_param1: 5,
+          action_param2: 4,
+          action_param3: 1,
+        },
+        expected: `MockEntity - In Combat - SetBossState 5 to SPECIAL`,
+      },
+      {
+        name: `SAI_ACTIONS.SET_INST_DATA check boss state 5 (TO_BE_DECIDED)`,
+        input: {
+          action_type: SAI_ACTIONS.SET_INST_DATA,
+          action_param1: 5,
+          action_param2: 5,
+          action_param3: 1,
+        },
+        expected: `MockEntity - In Combat - SetBossState 5 to TO_BE_DECIDED`,
+      },
+      {
+        name: `SAI_ACTIONS.SET_INST_DATA check boss state 6 ([Unknown Encounter State])`,
+        input: {
+          action_type: SAI_ACTIONS.SET_INST_DATA,
+          action_param1: 5,
+          action_param2: 6,
+          action_param3: 1,
+        },
+        expected: `MockEntity - In Combat - SetBossState 5 to [Unknown Encounter State]`,
+      },
+      {
+        name: `SAI_ACTIONS.SET_INST_DATA check instance data`,
+        input: {
+          action_type: SAI_ACTIONS.SET_INST_DATA,
+          action_param1: 5,
+          action_param2: 7,
+          action_param3: 0,
+        },
+        expected: `MockEntity - In Combat - Set Instance Data 5 to 7`,
+      },
+      {
         name: `SAI_ACTIONS.FOLLOW check target_type 2 (SAI_TARGETS.VICTIM)`,
         input: {
           action_type: SAI_ACTIONS.FOLLOW,
