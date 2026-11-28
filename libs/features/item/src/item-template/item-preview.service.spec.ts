@@ -11,6 +11,7 @@ import { lastValueFrom, Observable, of } from 'rxjs';
 import { instance, mock } from 'ts-mockito';
 import { ItemHandlerService } from '../item-handler.service';
 import { ItemPreviewService } from './item-preview.service';
+import { MOCK_SCALING_STAT_DISTRIBUTION, MOCK_SCALING_STAT_VALUES } from './item-scaling-stats.mock';
 
 describe('ItemPreviewService', () => {
   interface Lock extends TableRow {
@@ -225,6 +226,21 @@ describe('ItemPreviewService', () => {
     vi.spyOn(sqliteQueryService, 'getLockById').mockImplementation((i) => lastValueFrom(of(locksData[i as number])) as Promise<Lock[]>);
     vi.spyOn(sqliteQueryService, 'getSkillNameById').mockImplementation((i) => lastValueFrom(of(i === 1 ? 'profession' : '')));
     vi.spyOn(sqliteQueryService, 'query').mockImplementation(((i) => {
+      if (i.indexOf('FROM scalingstatdistribution_dbc') > -1) {
+        if (i.indexOf('ID = 1') > -1) {
+          return of([MOCK_SCALING_STAT_DISTRIBUTION]);
+        }
+        if (i.indexOf('ID = 2') > -1) {
+          return of([{ ...MOCK_SCALING_STAT_DISTRIBUTION, ID: 2, Maxlevel: 10 }]);
+        }
+
+        return of([]);
+      }
+
+      if (i.indexOf('FROM scalingstatvalues_dbc') > -1) {
+        return of(i.indexOf('Charlevel = 80') > -1 ? [MOCK_SCALING_STAT_VALUES] : []);
+      }
+
       if (i.indexOf('item_extended_cost') > -1) {
         if (i.indexOf('600') > -1) {
           return of(mockItemEtendedCost1);
@@ -421,6 +437,68 @@ describe('ItemPreviewService', () => {
     service['getItemEnchantmentConditionById'](id);
     expect(sqliteQueryService.query).toHaveBeenCalledTimes(1);
     expect(sqliteQueryService.query).toHaveBeenCalledWith(`SELECT * FROM item_enchantment_condition WHERE id = ${id}`);
+  });
+
+  it('getScalingStatDistributionById', () => {
+    const { service, sqliteQueryService } = setup();
+    service['getScalingStatDistributionById'](id);
+    expect(sqliteQueryService.query).toHaveBeenCalledExactlyOnceWith(`SELECT * FROM scalingstatdistribution_dbc WHERE ID = ${id}`);
+  });
+
+  it('getScalingStatValuesByLevel', () => {
+    const { service, sqliteQueryService } = setup();
+    service['getScalingStatValuesByLevel'](80);
+    expect(sqliteQueryService.query).toHaveBeenCalledExactlyOnceWith(`SELECT * FROM scalingstatvalues_dbc WHERE Charlevel = 80`);
+  });
+
+  describe('scaling stats', () => {
+    const scalingWeapon: Partial<ItemTemplate> = {
+      class: ITEM_TYPE.WEAPON,
+      dmg_min2: 0,
+      dmg_max2: 0,
+      delay: 3800,
+      dmg_min1: 1,
+      ScalingStatDistribution: 1,
+      ScalingStatValue: 0x408,
+      stat_type1: 3,
+      stat_value1: 99,
+    };
+
+    it('should preview the stats and damage of a scaling item at the max level of its distribution', async () => {
+      const { service } = setup();
+
+      const preview = await service.calculatePreview(scalingWeapon as ItemTemplate);
+
+      expect(preview).toContain('474 - 711 Damage');
+      expect(preview).toContain('+68 Strength');
+      expect(preview).toContain('+103 Stamina');
+      expect(preview).not.toContain('+99 Agility');
+    });
+
+    it('should preview the item stats when ScalingStatValue is 0', async () => {
+      const { service, sqliteQueryService } = setup();
+
+      const preview = await service.calculatePreview({ ...scalingWeapon, ScalingStatValue: 0 } as ItemTemplate);
+
+      expect(preview).toContain('+99 Agility');
+      expect(sqliteQueryService.query).not.toHaveBeenCalledWith(expect.stringContaining('scalingstat'));
+    });
+
+    it('should preview the item stats when the distribution does not exist', async () => {
+      const { service } = setup();
+
+      const preview = await service.calculatePreview({ ...scalingWeapon, ScalingStatDistribution: 3 } as ItemTemplate);
+
+      expect(preview).toContain('+99 Agility');
+    });
+
+    it('should preview the item stats when there are no values for the level of the distribution', async () => {
+      const { service } = setup();
+
+      const preview = await service.calculatePreview({ ...scalingWeapon, ScalingStatDistribution: 2 } as ItemTemplate);
+
+      expect(preview).toContain('+99 Agility');
+    });
   });
 
   it('getCreatureEntryByItemSpellId', async () => {

@@ -84,6 +84,7 @@ export * from './flags/gameobject-flags';
 export * from './flags/item-flags';
 export * from './flags/item-flags-custom';
 export * from './flags/item-flags-extra';
+export * from './flags/item-scaling-stat-value';
 export * from './flags/loot-mode';
 export * from './flags/mechanic-immune-mask';
 export * from './flags/mechanic-immunities-mask';

@@ -21,6 +21,8 @@ import { PreviewHelperService } from '@keira/shared/preview';
 import { lastValueFrom } from 'rxjs';
 import { ITEM_CONSTANTS } from './item-constants';
 import { gtCombatRatings, lvlIndepRating, MAX_LEVEL, resistanceFields } from './item-preview';
+import { applyScalingStats, getScalingStatLevel } from './item-scaling-stats';
+import { ScalingStatDistribution, ScalingStatValues } from './item-scaling-stats.model';
 
 @Service()
 export class ItemPreviewService {
@@ -70,6 +72,18 @@ export class ItemPreviewService {
 
   private getItemEnchantmentConditionById(id: number | string): Promise<TableRow[]> {
     return lastValueFrom(this.sqliteQueryService.query<TableRow>(`SELECT * FROM item_enchantment_condition WHERE id = ${id}`));
+  }
+
+  private getScalingStatDistributionById(id: number): Promise<ScalingStatDistribution[] | null> {
+    return lastValueFrom(
+      this.sqliteQueryService.query<ScalingStatDistribution>(`SELECT * FROM scalingstatdistribution_dbc WHERE ID = ${id}`),
+    );
+  }
+
+  private getScalingStatValuesByLevel(level: number): Promise<ScalingStatValues[] | null> {
+    return lastValueFrom(
+      this.sqliteQueryService.query<ScalingStatValues>(`SELECT * FROM scalingstatvalues_dbc WHERE Charlevel = ${level}`),
+    );
   }
 
   private getItemExtendedCostFromVendor(itemId: number | string): Promise<any[]> {
@@ -1259,7 +1273,32 @@ export class ItemPreviewService {
     return lockText;
   }
 
-  public async calculatePreview(itemTemplate: ItemTemplate): Promise<string> {
+  /**
+   * Items with both ScalingStatDistribution and ScalingStatValue set (heirlooms) get their stats, armor and weapon damage
+   * from the DBC instead of item_template: preview them as they are at the max level of their distribution.
+   */
+  private async getScaledItemTemplate(itemTemplate: ItemTemplate): Promise<ItemTemplate> {
+    const distributionId = Number(itemTemplate.ScalingStatDistribution);
+    if (distributionId <= 0 || Number(itemTemplate.ScalingStatValue) <= 0) {
+      return itemTemplate;
+    }
+
+    const ssd = (await this.getScalingStatDistributionById(distributionId))?.[0];
+    if (ssd?.ID !== distributionId) {
+      return itemTemplate;
+    }
+
+    const level = getScalingStatLevel(ssd);
+    const ssv = (await this.getScalingStatValuesByLevel(level))?.[0];
+    if (ssv?.Charlevel !== level) {
+      return itemTemplate;
+    }
+
+    return applyScalingStats(itemTemplate, ssd, ssv);
+  }
+
+  public async calculatePreview(originalItemTemplate: ItemTemplate): Promise<string> {
+    const itemTemplate = await this.getScaledItemTemplate(originalItemTemplate);
     let tmpItemPreview = '';
     const green: string[] = [];
 

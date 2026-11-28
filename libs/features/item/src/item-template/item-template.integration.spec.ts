@@ -295,6 +295,16 @@ describe('ItemTemplate integration tests', () => {
       page.expectFullQueryToContain('4100');
     });
 
+    it('changing ScalingStatValue via its FlagsSelector should correctly work', async () => {
+      const { page } = setup(false);
+      await tickAsync();
+
+      const result = await page.openFlagsAndToggle('ScalingStatValue', [3, 10]);
+
+      expect(result).toBe(1032);
+      page.expectDiffQueryToContain('UPDATE `item_template` SET `ScalingStatValue` = 1032 WHERE (`entry` = 1234);');
+    });
+
     it.skip('changing a value via ItemEnchantmentSelector should correctly work', async () => {
       const { page, fixture } = setup(false);
       await tickAsync();

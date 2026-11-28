@@ -508,6 +508,12 @@
             <div class="form-group col-12 col-sm-6 col-lg-4 col-xl-3">
               <label class="control-label" for="ScalingStatValue">ScalingStatValue</label>
               <i class="fas fa-info-circle ms-1" placement="auto" [tooltip]="'ITEM.TEMPLATE.SCALING_STAT_VALUE' | translate"></i>
+              <keira-flags-selector-btn
+                [control]="editorService.form.controls.ScalingStatValue"
+                [disabled]="editorService.form.controls.ScalingStatValue.disabled"
+                [config]="{ flags: ITEM_SCALING_STAT_VALUE, name: 'ScalingStatValue' }"
+                [modalClass]="'modal-lg'"
+              />
               <input [formControlName]="'ScalingStatValue'" id="ScalingStatValue" type="number" class="form-control form-control-sm" />
             </div>
           </div>

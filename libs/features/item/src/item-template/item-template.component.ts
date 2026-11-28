@@ -16,6 +16,7 @@ import {
   ITEM_FLAGS_EXTRA,
   ITEM_MATERIAL,
   ITEM_QUALITY,
+  ITEM_SCALING_STAT_VALUE,
   ITEM_SHEAT,
   ITEM_SUBCLASS,
   ItemTemplate,
@@ -103,6 +104,7 @@ export class ItemTemplateComponent extends SingleRowEditorComponent<ItemTemplate
   readonly TOTEM_CATEGORY = TOTEM_CATEGORY;
   readonly FOOD_TYPE = FOOD_TYPE;
   readonly ITEM_FLAGS_CUSTOM = ITEM_FLAGS_CUSTOM;
+  protected readonly ITEM_SCALING_STAT_VALUE = ITEM_SCALING_STAT_VALUE;
   readonly DAMAGE_TYPE = DAMAGE_TYPE;
   readonly STAT_TYPE = STAT_TYPE;
   readonly PVP_RANK = PVP_RANK;
