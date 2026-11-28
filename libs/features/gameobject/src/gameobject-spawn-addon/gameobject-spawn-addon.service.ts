@@ -2,6 +2,7 @@ import { Service, inject } from '@angular/core';
 import { GAMEOBJECT_SPAWN_ADDON_ID_2, GAMEOBJECT_SPAWN_ADDON_TABLE, GameobjectSpawnAddon } from '@keira/shared/acore-world-model';
 import { GameobjectHandlerService } from '../gameobject-handler.service';
 import { MultiRowExternalEditorService } from '@keira/shared/base-abstract-classes';
+import { Observable } from 'rxjs';
 
 @Service()
 export class GameobjectSpawnAddonService extends MultiRowExternalEditorService<GameobjectSpawnAddon> {
@@ -15,7 +16,7 @@ export class GameobjectSpawnAddonService extends MultiRowExternalEditorService<G
     this.init();
   }
 
-  selectQuery(id: string | number) {
+  selectQuery(id: string | number): Observable<GameobjectSpawnAddon[]> {
     return this.queryService.query<GameobjectSpawnAddon>(
       `SELECT a.* FROM gameobject AS g INNER JOIN gameobject_addon AS a ON g.guid = a.guid WHERE g.id = ${id}`,
     );
