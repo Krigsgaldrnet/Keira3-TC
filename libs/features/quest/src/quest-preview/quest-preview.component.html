@@ -404,7 +404,7 @@
       @if (service.isGains()) {
         <div id="gains">
           <p class="title mt-3">Gains</p>
-          @if (service.rewardXP$ | async; as xp) {
+          @if (rewardXP(); as xp) {
             <p id="rewardXP">• {{ xp }} experience</p>
           }
           @if (service.questTemplate.RewardTalents) {
@@ -431,6 +431,22 @@
                   }
                 </div>
               }
+            </div>
+          }
+          @if (service.questTemplate.RewardXPDifficulty) {
+            <div id="xp-player-level" class="mt-2 pb-5">
+              <label for="xp-player-level-input" class="d-flex justify-content-between small">
+                <span>Player level</span>
+                <span id="xp-player-level-value">{{ xpPlayerLevel() }} / {{ MAX_PLAYER_LEVEL }}</span>
+              </label>
+              <input
+                id="xp-player-level-input"
+                type="range"
+                class="form-range"
+                min="1"
+                [max]="MAX_PLAYER_LEVEL"
+                [formControl]="xpPlayerLevelControl"
+              />
             </div>
           }
         </div>

@@ -1,6 +1,7 @@
 import { AsyncPipe } from '@angular/common';
 import { ChangeDetectorRef, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { IconComponent } from '@keira/shared/base-editor-components';
 import { QuestObjectivesComponent } from './quest-objectives.component';
 import { FactionRequirement, ItemObjective, NpcOrGoObjective } from './quest-objectives.model';
@@ -11,14 +12,23 @@ import { PreviewHelperService } from '@keira/shared/preview';
 import { CollapseDirective } from 'ngx-bootstrap/collapse';
 import { Quest } from './quest-preview.model';
 import { QuestPreviewService } from './quest-preview.service';
-import { from, Observable, of } from 'rxjs';
+import { getDefaultXpPlayerLevel, MAX_PLAYER_LEVEL } from './quest-reward-xp';
+import { distinctUntilChanged, from, Observable, of } from 'rxjs';
 
 export const QUEST_PREVIEW_DEBOUNCE_TIME = 300;
 
 @Component({
   selector: 'keira-quest-preview',
   templateUrl: './quest-preview.component.html',
-  imports: [IconComponent, CollapseDirective, AsyncPipe, QuestObjectivesComponent, Model3DViewerComponent, MapViewerComponent],
+  imports: [
+    IconComponent,
+    CollapseDirective,
+    AsyncPipe,
+    ReactiveFormsModule,
+    QuestObjectivesComponent,
+    Model3DViewerComponent,
+    MapViewerComponent,
+  ],
 })
 export class QuestPreviewComponent implements OnInit {
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
@@ -45,6 +55,12 @@ export class QuestPreviewComponent implements OnInit {
   protected readonly itemToggles: { [key: number]: boolean } = {};
   protected readonly NPC_VIEWER_TYPE = VIEWER_TYPE.NPC;
   protected readonly OBJECT_VIEWER_TYPE = VIEWER_TYPE.OBJECT;
+
+  protected readonly MAX_PLAYER_LEVEL = MAX_PLAYER_LEVEL;
+  protected readonly xpPlayerLevelControl = new FormControl(MAX_PLAYER_LEVEL, { nonNullable: true });
+  protected readonly xpPlayerLevel = signal(MAX_PLAYER_LEVEL);
+  protected readonly rewardXP = signal(0);
+  private rewardXPRequestId = 0;
 
   get showMaxLevel(): boolean {
     return !!this.service.maxLevel && this.service.maxLevel !== '0';
@@ -104,9 +120,37 @@ export class QuestPreviewComponent implements OnInit {
         this.invalidateObjectivesCache();
         this.changeDetectorRef.markForCheck();
         void this.loadMapData();
+        this.followQuestLevel();
       });
 
+    this.xpPlayerLevelControl.valueChanges.pipe(distinctUntilChanged(), takeUntilDestroyed(this.destroyRef)).subscribe((level) => {
+      this.xpPlayerLevel.set(level);
+      void this.loadRewardXP();
+    });
+
     void this.loadMapData();
+    this.followQuestLevel();
+  }
+
+  // The slider starts at the quest level and keeps following it while the quest is edited, until the user moves it.
+  private followQuestLevel(): void {
+    if (!this.xpPlayerLevelControl.dirty) {
+      const { QuestLevel, MinLevel } = this.service.questTemplate;
+      const level = getDefaultXpPlayerLevel(Number(QuestLevel), Number(MinLevel));
+      this.xpPlayerLevelControl.setValue(level, { emitEvent: false });
+      this.xpPlayerLevel.set(level);
+    }
+
+    void this.loadRewardXP();
+  }
+
+  private async loadRewardXP(): Promise<void> {
+    const requestId = ++this.rewardXPRequestId;
+    const xp = await this.service.getRewardXP(this.xpPlayerLevel());
+    // A slower answer for a level the slider already left must not overwrite the current one.
+    if (requestId === this.rewardXPRequestId) {
+      this.rewardXP.set(xp);
+    }
   }
 
   private mapDataRequestId = 0;

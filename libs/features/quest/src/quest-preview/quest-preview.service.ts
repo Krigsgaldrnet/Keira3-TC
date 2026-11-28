@@ -43,6 +43,7 @@ import { QuestRequestItemsService } from '../quest-request-items/quest-request-i
 import { QuestTemplateAddonService } from '../quest-template-addon/quest-template-addon.service';
 import { QuestTemplateService } from '../quest-template/quest-template.service';
 import { DifficultyLevel, Quest, QUEST_FACTION_REWARD, QuestFactionRewardKey } from './quest-preview.model';
+import { getQuestRewardXp, QUEST_LEVEL_SCALING } from './quest-reward-xp';
 import { compareObjFn, UNDEFINED_PROMISE } from '@keira/shared/utils';
 import { combineLatest, debounceTime, distinctUntilChanged, map, Observable } from 'rxjs';
 
@@ -369,8 +370,16 @@ export class QuestPreviewService {
     return this.sqliteQueryService.getSkillNameById(Number(this.questTemplateAddon.RequiredSkillID));
   }
 
-  get rewardXP$(): Promise<string> {
-    return this.sqliteQueryService.getRewardXP(this.questTemplate.RewardXPDifficulty, this.questTemplate.QuestLevel);
+  async getRewardXP(playerLevel: number): Promise<number> {
+    const { QuestLevel, RewardXPDifficulty } = this.questTemplate;
+    const questLevel = Number(QuestLevel) === QUEST_LEVEL_SCALING ? playerLevel : Number(QuestLevel);
+    const baseXp = await this.sqliteQueryService.getRewardXP(RewardXPDifficulty, questLevel);
+
+    if (!baseXp) {
+      return 0;
+    }
+
+    return getQuestRewardXp(Number(baseXp), questLevel, playerLevel);
   }
 
   getRepReward$(field: number | string): Promise<QuestReputationReward[]> {

@@ -183,26 +183,45 @@ describe('QuestPreviewService', () => {
   });
 
   it('sqliteQuery', async () => {
-    const { service, sqliteQueryService, questTemplateService, questTemplateAddonService } = setup();
+    const { service, sqliteQueryService, questTemplateAddonService } = setup();
     const mockSkillName = 'Mock Skill';
     const mockSkill = 755;
-    const mockRewardXP = '450';
-    const mockDifficulty = 1;
-    const mockQuestLevel = 2;
     questTemplateAddonService.form.controls.RequiredSkillID.setValue(mockSkill);
-    questTemplateService.form.controls.RewardXPDifficulty.setValue(mockDifficulty);
-    questTemplateService.form.controls.QuestLevel.setValue(mockQuestLevel);
-
     vi.spyOn(sqliteQueryService, 'getSkillNameById').mockImplementation(() => Promise.resolve(mockSkillName));
-    vi.spyOn(sqliteQueryService, 'getRewardXP').mockImplementation(() => Promise.resolve(mockRewardXP));
 
     expect(await service.requiredSkill$).toBe(mockSkillName);
-    expect(await service.rewardXP$).toBe(mockRewardXP);
+    expect(sqliteQueryService.getSkillNameById).toHaveBeenCalledExactlyOnceWith(mockSkill);
+  });
 
-    expect(sqliteQueryService.getSkillNameById).toHaveBeenCalledTimes(1);
-    expect(sqliteQueryService.getSkillNameById).toHaveBeenCalledWith(mockSkill);
-    expect(sqliteQueryService.getRewardXP).toHaveBeenCalledTimes(1);
-    expect(sqliteQueryService.getRewardXP).toHaveBeenCalledWith(mockDifficulty, mockQuestLevel);
+  describe('getRewardXP', () => {
+    function setupRewardXP(config: { questLevel: number; baseXp: string | undefined }) {
+      const { service, sqliteQueryService, questTemplateService } = setup();
+      const difficulty = 5;
+      questTemplateService.form.controls.RewardXPDifficulty.setValue(difficulty);
+      questTemplateService.form.controls.QuestLevel.setValue(config.questLevel);
+      vi.spyOn(sqliteQueryService, 'getRewardXP').mockReturnValue(Promise.resolve(config.baseXp as string));
+      return { service, sqliteQueryService, difficulty };
+    }
+
+    it('should give the XP of the quest level reduced for the player level', async () => {
+      const { service, sqliteQueryService, difficulty } = setupRewardXP({ questLevel: 15, baseXp: '1350' });
+
+      expect(await service.getRewardXP(21)).toBe(1100);
+      expect(sqliteQueryService.getRewardXP).toHaveBeenCalledExactlyOnceWith(difficulty, 15);
+    });
+
+    it('should use the player level as quest level when the quest scales with the player', async () => {
+      const { service, sqliteQueryService, difficulty } = setupRewardXP({ questLevel: -1, baseXp: '1350' });
+
+      expect(await service.getRewardXP(30)).toBe(1350);
+      expect(sqliteQueryService.getRewardXP).toHaveBeenCalledExactlyOnceWith(difficulty, 30);
+    });
+
+    it('should give no XP when the quest level has no XP row', async () => {
+      const { service } = setupRewardXP({ questLevel: 0, baseXp: undefined });
+
+      expect(await service.getRewardXP(10)).toBe(0);
+    });
   });
 
   it('difficultyLevels', () => {

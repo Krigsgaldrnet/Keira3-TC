@@ -44,6 +44,15 @@ class QuestPreviewComponentPage extends PageObject<QuestPreviewComponent> {
   get rewardXP(): HTMLParagraphElement {
     return this.query<HTMLParagraphElement>('#rewardXP');
   }
+  get xpPlayerLevelSlider(): HTMLInputElement {
+    return this.query<HTMLInputElement>('#xp-player-level-input');
+  }
+  get xpPlayerLevelValue(): HTMLSpanElement {
+    return this.query<HTMLSpanElement>('#xp-player-level-value');
+  }
+  get xpPlayerLevel(): HTMLDivElement | null {
+    return this.query<HTMLDivElement>('#xp-player-level', false);
+  }
   get rewardTalents(): HTMLParagraphElement {
     return this.query<HTMLParagraphElement>('#rewardTalents');
   }
@@ -315,19 +324,91 @@ describe('QuestPreviewComponent', () => {
     page.removeNativeElement();
   });
 
-  it('should show rewardXP', async () => {
-    const { fixture, service, page } = setup();
-    const questTemplate = createMockObject({ RewardXPDifficulty: 2, QuestLevel: 10 }, QuestTemplate);
-    vi.spyOn(service, 'rewardXP$', 'get').mockReturnValue(Promise.resolve('200'));
-    vi.spyOn(service, 'questTemplate', 'get').mockReturnValue(questTemplate);
+  describe('reward XP', () => {
+    function setupRewardXP(partial: Partial<QuestTemplate>) {
+      const helpers = setup();
+      const questTemplate = createMockObject({ RewardXPDifficulty: 5, QuestLevel: 15, MinLevel: 10, ...partial }, QuestTemplate);
+      const questTemplateSpy = vi.spyOn(helpers.service, 'questTemplate', 'get').mockReturnValue(questTemplate);
+      vi.spyOn(helpers.sqliteQueryService, 'getRewardXP').mockReturnValue(Promise.resolve('1350'));
+      return { ...helpers, questTemplate, questTemplateSpy };
+    }
 
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    it('should show the XP at the quest level when the slider was not moved', async () => {
+      const { page } = setupRewardXP({});
 
-    expect(page.rewardXP.innerText).toContain('200');
+      await page.whenStable();
 
-    fixture.debugElement.nativeElement.remove();
+      expect(page.xpPlayerLevelSlider.value).toBe('15');
+      expect(page.xpPlayerLevelValue.innerText).toBe('15 / 80');
+      expect(page.rewardXP.innerText).toContain('1350 experience');
+      page.removeNativeElement();
+    });
+
+    it('should show the XP at the level chosen with the slider', async () => {
+      const { page } = setupRewardXP({});
+      await page.whenStable();
+
+      page.setInputValue(page.xpPlayerLevelSlider, 21);
+
+      await vi.waitFor(() => expect(page.rewardXP.innerText).toContain('1100 experience'));
+      expect(page.xpPlayerLevelValue.innerText).toBe('21 / 80');
+      page.removeNativeElement();
+    });
+
+    it('should move the slider with the quest level while it was not moved', async () => {
+      const { page, questTemplateSpy, valueChangesSubject } = setupRewardXP({});
+      await page.whenStable();
+
+      questTemplateSpy.mockReturnValue(createMockObject({ RewardXPDifficulty: 5, QuestLevel: 20 }, QuestTemplate));
+      valueChangesSubject.next();
+      await page.whenStable();
+
+      expect(page.xpPlayerLevelSlider.value).toBe('20');
+      expect(page.xpPlayerLevelValue.innerText).toBe('20 / 80');
+      page.removeNativeElement();
+    });
+
+    it('should keep the chosen level and update the XP when the quest changes', async () => {
+      const { page, questTemplateSpy, valueChangesSubject, sqliteQueryService } = setupRewardXP({});
+      await page.whenStable();
+      page.setInputValue(page.xpPlayerLevelSlider, 21);
+      await page.whenStable();
+
+      questTemplateSpy.mockReturnValue(createMockObject({ RewardXPDifficulty: 6, QuestLevel: 20 }, QuestTemplate));
+      vi.mocked(sqliteQueryService.getRewardXP).mockReturnValue(Promise.resolve('2000'));
+      valueChangesSubject.next();
+
+      await vi.waitFor(() => expect(page.rewardXP.innerText).toContain('2000 experience'));
+      expect(page.xpPlayerLevelValue.innerText).toBe('21 / 80');
+      page.removeNativeElement();
+    });
+
+    it('should ignore a late XP answer for a level the slider already left', async () => {
+      const { page, service } = setupRewardXP({});
+      await page.whenStable();
+      let resolveSlowAnswer: (xp: number) => void = () => undefined;
+      vi.spyOn(service, 'getRewardXP')
+        .mockReturnValueOnce(new Promise((resolve) => (resolveSlowAnswer = resolve)))
+        .mockReturnValueOnce(Promise.resolve(900));
+
+      page.setInputValue(page.xpPlayerLevelSlider, 30);
+      page.setInputValue(page.xpPlayerLevelSlider, 22);
+      await vi.waitFor(() => expect(page.rewardXP.innerText).toContain('900 experience'));
+      resolveSlowAnswer(140);
+      await page.whenStable();
+
+      expect(page.rewardXP.innerText).toContain('900 experience');
+      page.removeNativeElement();
+    });
+
+    it('should not show the slider when the quest gives no XP', async () => {
+      const { page } = setupRewardXP({ RewardXPDifficulty: 0, RewardTalents: 1 });
+
+      await page.whenStable();
+
+      expect(page.xpPlayerLevel).toBeNull();
+      page.removeNativeElement();
+    });
   });
 
   it('should show RewardTalents', () => {
