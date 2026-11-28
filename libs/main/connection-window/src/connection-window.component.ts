@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, inject, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, inject, OnInit, signal } from '@angular/core';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { QueryError } from 'mysql2';
@@ -15,6 +15,9 @@ import { KeiraConnectionOptions, MysqlService } from '@keira/shared/db-layer';
 import { LoginConfigService } from '@keira/shared/login-config';
 import { SwitchLanguageComponent } from '@keira/shared/switch-language';
 import { ModelForm, SubscriptionHandler } from '@keira/shared/utils';
+
+// mysql2's own default. An empty field would reach mysql2 as null, which turns the timeout off.
+const DEFAULT_CONNECT_TIMEOUT_MS = 10000;
 
 @Component({
   selector: 'keira-connection-window',
@@ -47,6 +50,7 @@ export class ConnectionWindowComponent extends SubscriptionHandler implements On
   error: QueryError | undefined;
   savePassword = true;
   rememberMe = true;
+  readonly advancedOptionsOpen = signal(false);
 
   get isRecentDropdownDisabled(): boolean {
     return !this.configs || this.configs.length === 0;
@@ -59,6 +63,7 @@ export class ConnectionWindowComponent extends SubscriptionHandler implements On
       user: new FormControl<string>('acore') as FormControl<string>,
       password: new FormControl<string>('acore') as FormControl<string>,
       database: new FormControl<string>('acore_world') as FormControl<string>,
+      connectTimeout: new FormControl<number>(DEFAULT_CONNECT_TIMEOUT_MS) as FormControl<number>,
       sslEnabled: new FormControl<boolean>(false) as FormControl<boolean>,
       sshEnabled: new FormControl<boolean>(false) as FormControl<boolean>,
       sshHost: new FormControl<string>('') as FormControl<string>,
@@ -74,6 +79,7 @@ export class ConnectionWindowComponent extends SubscriptionHandler implements On
       // get last saved config
       const lastConfig = this.configs[this.configs.length - 1];
       this.form.patchValue(lastConfig);
+      this.openAdvancedOptionsIfUsed(lastConfig);
 
       if (!this.form.getRawValue().password) {
         this.savePassword = false;
@@ -87,6 +93,19 @@ export class ConnectionWindowComponent extends SubscriptionHandler implements On
 
   loadConfig(config: Partial<KeiraConnectionOptions>): void {
     this.form.patchValue(config);
+    this.openAdvancedOptionsIfUsed(config);
+  }
+
+  onAdvancedOptionsToggle(event: Event): void {
+    this.advancedOptionsOpen.set((event.target as HTMLDetailsElement).open);
+  }
+
+  // a saved connection that relies on hidden settings shows them, so the user sees what's active
+  private openAdvancedOptionsIfUsed(config: Partial<KeiraConnectionOptions>): void {
+    const customTimeout = Number(config.connectTimeout) > 0 && config.connectTimeout !== DEFAULT_CONNECT_TIMEOUT_MS;
+    if (config.sslEnabled || config.sshEnabled || customTimeout) {
+      this.advancedOptionsOpen.set(true);
+    }
   }
 
   removeAllConfigs(): void {
@@ -105,6 +124,10 @@ export class ConnectionWindowComponent extends SubscriptionHandler implements On
   }
 
   onConnect(): void {
+    if (!(Number(this.form.getRawValue().connectTimeout) > 0)) {
+      this.form.patchValue({ connectTimeout: DEFAULT_CONNECT_TIMEOUT_MS });
+    }
+
     const connectionConfig = this.form.getRawValue();
 
     // Add SSL configuration if SSL is enabled
@@ -129,6 +152,7 @@ export class ConnectionWindowComponent extends SubscriptionHandler implements On
         },
         error: (error: QueryError) => {
           this.error = error;
+          this.changeDetectorRef.markForCheck();
         },
       }),
     );

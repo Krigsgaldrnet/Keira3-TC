@@ -5,7 +5,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { PageObject, Spied, TranslateTestingModule } from '@keira/shared/test-utils';
 import { QueryError } from 'mysql2';
 import { TooltipDirective } from 'ngx-bootstrap/tooltip';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { instance, mock } from 'ts-mockito';
 
 import { ElectronService } from '@keira/shared/common-services';
@@ -28,6 +28,15 @@ class ConnectionWindowComponentPage extends PageObject<ConnectionWindowComponent
   }
   get databaseInput(): HTMLInputElement {
     return this.query<HTMLInputElement>('#database');
+  }
+  get advancedOptions(): HTMLDetailsElement {
+    return this.query<HTMLDetailsElement>('#advanced-options');
+  }
+  get advancedOptionsSummary(): HTMLElement {
+    return this.query<HTMLElement>('#advanced-options summary');
+  }
+  get connectTimeoutInput(): HTMLInputElement {
+    return this.query<HTMLInputElement>('#connect-timeout');
   }
   get connectBtn(): HTMLButtonElement {
     return this.query<HTMLButtonElement>('.connect-button');
@@ -159,6 +168,7 @@ describe('ConnectionWindowComponent', () => {
       user: 'acore',
       password: 'acore',
       database: 'acore_world',
+      connectTimeout: 10000,
       sslEnabled: true,
       sshEnabled: false,
       sshHost: '',
@@ -187,6 +197,7 @@ describe('ConnectionWindowComponent', () => {
       user: 'Helias',
       password: 'helias123',
       database: 'helias_world',
+      connectTimeout: 10000,
       sslEnabled: false,
       sshEnabled: false,
       sshHost: '',
@@ -223,6 +234,7 @@ describe('ConnectionWindowComponent', () => {
       user,
       password,
       database,
+      connectTimeout: 10000,
       sslEnabled: false,
       sshEnabled: false,
       sshHost: '',
@@ -263,6 +275,134 @@ describe('ConnectionWindowComponent', () => {
 
     expect(page.errorElement.innerHTML).toContain(error.stack as string);
     expect(page.errorElement.innerHTML).not.toContain(error.message as string);
+  });
+
+  it('should show an error that arrives after the click, such as a connection timeout', async () => {
+    const { page, connectSpy } = setup();
+    const connection$ = new Subject<void>();
+    connectSpy.mockReturnValue(connection$);
+
+    page.clickElement(page.connectBtn);
+    connection$.error({ code: 'ETIMEDOUT', message: 'connect ETIMEDOUT' } as QueryError);
+    await page.whenStable();
+
+    expect(page.errorElement.innerHTML).toContain('error-box');
+    expect(page.errorElement.innerHTML).toContain('ETIMEDOUT');
+  });
+
+  describe('the advanced options', () => {
+    // the browser fires the details toggle event asynchronously
+    const toggleAdvancedOptions = async (page: ConnectionWindowComponentPage) => {
+      const toggled = new Promise((resolve) => page.advancedOptions.addEventListener('toggle', resolve, { once: true }));
+      page.clickElement(page.advancedOptionsSummary);
+      await toggled;
+      await page.whenStable();
+    };
+
+    it('should be collapsed by default and hold the timeout, SSL and SSH options', () => {
+      const { page } = setup();
+
+      expect(page.advancedOptions.open).toBe(false);
+      expect(page.advancedOptions.contains(page.connectTimeoutInput)).toBe(true);
+      expect(page.advancedOptions.contains(page.sslEnabledInput)).toBe(true);
+      expect(page.advancedOptions.contains(page.query('#ssh-enabled'))).toBe(true);
+    });
+
+    it('should open and close when clicking the summary', async () => {
+      const { page, component } = setup();
+
+      await toggleAdvancedOptions(page);
+
+      expect(page.advancedOptions.open).toBe(true);
+      expect(component.advancedOptionsOpen()).toBe(true);
+
+      await toggleAdvancedOptions(page);
+
+      expect(page.advancedOptions.open).toBe(false);
+      expect(component.advancedOptionsOpen()).toBe(false);
+    });
+
+    it('should stay collapsed when the last saved config uses only default advanced options', async () => {
+      const { page, loginConfigService } = setup(false);
+      loginConfigService.getConfigs.mockReturnValue([{ ...mockConfigsWithPass[1], connectTimeout: 10000 }]);
+
+      page.detectChanges();
+      await page.whenStable();
+
+      expect(page.advancedOptions.open).toBe(false);
+    });
+
+    it.each([
+      ['SSL', { sslEnabled: true }],
+      ['SSH', { sshEnabled: true }],
+      ['a custom timeout', { connectTimeout: 25000 }],
+    ])('should be open when the last saved config uses %s', async (_name, advancedOptions) => {
+      const { page, loginConfigService } = setup(false);
+      loginConfigService.getConfigs.mockReturnValue([{ ...mockConfigsWithPass[1], ...advancedOptions }]);
+
+      page.detectChanges();
+      await page.whenStable();
+
+      expect(page.advancedOptions.open).toBe(true);
+    });
+
+    it('should open when loading a recent config that uses SSL', async () => {
+      const { page, component } = setup();
+
+      component.loadConfig({ ...mockConfigsWithPass[0], sslEnabled: true });
+      await page.whenStable();
+
+      expect(page.advancedOptions.open).toBe(true);
+      expect(page.sslEnabledInput.checked).toBe(true);
+    });
+  });
+
+  describe('the connection timeout', () => {
+    it('should send and save the timeout typed by the user', () => {
+      const { page, connectSpy, loginConfigService } = setup();
+
+      expect(page.connectTimeoutInput.value).toBe('10000');
+
+      page.setInputValue(page.connectTimeoutInput, 30000);
+      page.clickElement(page.connectBtn);
+
+      expect(connectSpy).toHaveBeenCalledWith(expect.objectContaining({ connectTimeout: 30000 }));
+      expect(loginConfigService.saveNewConfig).toHaveBeenCalledWith(expect.objectContaining({ connectTimeout: 30000 }));
+    });
+
+    it('should fall back to the default timeout when the field is empty', () => {
+      const { page, connectSpy, loginConfigService } = setup();
+
+      page.setInputValue(page.connectTimeoutInput, '');
+      page.clickElement(page.connectBtn);
+
+      expect(connectSpy).toHaveBeenCalledWith(expect.objectContaining({ connectTimeout: 10000 }));
+      expect(loginConfigService.saveNewConfig).toHaveBeenCalledWith(expect.objectContaining({ connectTimeout: 10000 }));
+      expect(page.connectTimeoutInput.value).toBe('10000');
+    });
+
+    it('should fall back to the default timeout when the value is not positive', () => {
+      const { page, connectSpy } = setup();
+
+      page.setInputValue(page.connectTimeoutInput, 0);
+      page.clickElement(page.connectBtn);
+
+      expect(connectSpy).toHaveBeenCalledWith(expect.objectContaining({ connectTimeout: 10000 }));
+    });
+
+    it('should be restored from the last saved config', async () => {
+      const { page, connectSpy, loginConfigService } = setup(false);
+      loginConfigService.getConfigs.mockReturnValue([{ ...mockConfigsWithPass[1], connectTimeout: 25000 }]);
+
+      page.detectChanges();
+      await page.whenStable();
+
+      expect(page.connectTimeoutInput.value).toBe('25000');
+
+      page.clickElement(page.connectBtn);
+
+      expect(connectSpy).toHaveBeenCalledWith(expect.objectContaining({ connectTimeout: 25000 }));
+    });
   });
 
   describe('the save checkbox', () => {
@@ -316,6 +456,7 @@ describe('ConnectionWindowComponent', () => {
         user: 'Helias',
         password,
         database: 'helias_world',
+        connectTimeout: 10000,
         sslEnabled: false,
         sshEnabled: false,
         sshHost: '',
@@ -331,6 +472,7 @@ describe('ConnectionWindowComponent', () => {
         user: 'Helias',
         password,
         database: 'helias_world',
+        connectTimeout: 10000,
         sslEnabled: false,
         sshEnabled: false,
         sshHost: '',
@@ -357,6 +499,7 @@ describe('ConnectionWindowComponent', () => {
         user: 'Helias',
         password: '',
         database: 'helias_world',
+        connectTimeout: 10000,
         sslEnabled: false,
         sshEnabled: false,
         sshHost: '',
@@ -372,6 +515,7 @@ describe('ConnectionWindowComponent', () => {
         user: 'Helias',
         password: 'helias123',
         database: 'helias_world',
+        connectTimeout: 10000,
         sslEnabled: false,
         sshEnabled: false,
         sshHost: '',
