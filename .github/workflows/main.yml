@@ -33,8 +33,7 @@ jobs:
         uses: nick-invision/retry@v4
         with:
           max_attempts: 5
-          # Coverage doesn't depend on the OS and slows the tests down, so the thresholds are enforced on one runner only
-          command: npm run ${{ matrix.os == 'ubuntu-24.04' && 'test-ci:coverage' || 'test-ci' }}
+          command: npm run test-ci:coverage
           timeout_minutes: 20
 
   build:
